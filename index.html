@@ -102,7 +102,7 @@ main { max-width: 900px; margin: 0 auto; padding: 32px 16px 0; }
 
 /* ── Form ── */
 label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; letter-spacing: 0.04em; }
-input[type=text], input[type=time], select {
+input[type=text], input[type=password], input[type=time], select {
   width: 100%; background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); font-family: var(--mono);
   font-size: 13px; padding: 10px 12px; outline: none;
@@ -315,7 +315,7 @@ button, .cal-cell, .name-chip { touch-action: manipulation; }
     <div class="step-connector"></div>
     <div class="step-dot" id="nav3"><div class="num">3</div><span class="step-label">匯出行事曆</span></div>
   </div>
-  <div class="ver-badge">v1.0.0</div>
+  <div class="ver-badge">v1.2.0</div>
 </header>
 
 <main>
@@ -341,6 +341,22 @@ button, .cal-cell, .name-chip { touch-action: manipulation; }
       <div class="preview-change" onclick="document.getElementById('fileInput').click()">更換圖片</div>
     </div>
     <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <div class="card">
+    <div class="card-title">Gemini API 金鑰</div>
+    <div class="form-row">
+      <div>
+        <label>API 金鑰（儲存於本機，不上傳）</label>
+        <div style="display:flex;gap:8px">
+          <input type="password" id="geminiKey" placeholder="AIzaSy..." style="flex:1">
+          <button onclick="toggleKeyVis()" class="btn btn-ghost" style="padding:10px 14px;flex-shrink:0;font-size:16px" title="顯示／隱藏">👁</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:7px;font-family:var(--mono)">
+          前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);text-decoration:none">aistudio.google.com</a> 取得免費金鑰
+        </p>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -474,9 +490,8 @@ button, .cal-cell, .name-chip { touch-action: manipulation; }
 
 <script>
 // ═══════════════════════════════════════════════
-//  HARDCODED CONFIG
+//  CONFIG
 // ═══════════════════════════════════════════════
-const GEMINI_KEY = 'AIzaSyA-c4TIG86922v1MM7-GkJ_Y9Q6IQcfEnc';
 const GEMINI_MODEL = 'gemini-3.1-pro-preview';
 const CALENDAR_ID = '1461720c368bce8a511b5531e89d08899056a19676f42603792faf426838b716@group.calendar.google.com';
 const OAUTH_CLIENT_ID = '263248100982-c6pb7r9o6n0tdl3ek0vurliuqfr8jhc4.apps.googleusercontent.com';
@@ -523,7 +538,9 @@ const S = {
 //  INIT
 // ═══════════════════════════════════════════════
 (function init() {
-  // Pre-fill saved name
+  // Pre-fill saved key & name
+  const savedKey = localStorage.getItem('sched_gemini_key') || '';
+  if (savedKey) document.getElementById('geminiKey').value = savedKey;
   if (S.empName) document.getElementById('empName').value = S.empName;
 
   // Populate year
@@ -588,17 +605,20 @@ function handleImageFile(file) {
 //  EXTRACTION
 // ═══════════════════════════════════════════════
 async function startExtraction() {
+  const key  = document.getElementById('geminiKey').value.trim();
   const name = document.getElementById('empName').value.trim();
   const year = parseInt(document.getElementById('selYear').value);
   const month = parseInt(document.getElementById('selMonth').value);
 
+  if (!key)  { toast('請輸入 Gemini API 金鑰', 'error'); return; }
   if (!S.imageBase64) { toast('請先上傳班表圖片', 'error'); return; }
   if (!name) { toast('請輸入您在班表上的姓名', 'error'); return; }
 
   S.empName = name;
   S.year = year;
   S.month = month;
-  localStorage.setItem('sched_name', name);  // 記住姓名
+  localStorage.setItem('sched_gemini_key', key);
+  localStorage.setItem('sched_name', name);
 
   goToStep(2);
   await runExtraction();
@@ -643,7 +663,7 @@ async function runExtraction() {
 {"found":false,"availableNames":["姓名1","姓名2",...]}`;
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${localStorage.getItem('sched_gemini_key') || ''}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1063,6 +1083,11 @@ function codeColor(code) {
   let hash = 0;
   for (let i = 0; i < code.length; i++) hash = code.charCodeAt(i) + ((hash << 5) - hash);
   return `hsl(${((hash % 360) + 360) % 360}, 65%, 58%)`;
+}
+
+function toggleKeyVis() {
+  const inp = document.getElementById('geminiKey');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
 }
 
 function toast(msg, type = '') {
