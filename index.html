@@ -2,1063 +2,1076 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>班表同步工具</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>班表 → 行事曆</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .spinner { animation: spin 1s linear infinite; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  .fade-in { animation: fadeIn 0.25s ease; }
-  .drag-over { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
-  :root { --tw-ring-color: #3b82f6; }
-  input[type="time"] { min-width: 100px; }
-  /* Prevent iOS Safari auto-zoom on focus */
-  @media (hover: none) and (pointer: coarse) {
-    input, select, textarea { font-size: 16px !important; }
-  }
-  /* Safe area for iPhone notch/home bar */
-  body { padding-bottom: env(safe-area-inset-bottom, 0px); }
-  #toast-container { bottom: max(1.25rem, env(safe-area-inset-bottom, 1.25rem)); }
-  /* Better tap response */
-  button, a, [onclick] { touch-action: manipulation; }
+:root {
+  --bg: #080a0e;
+  --panel: #0e1117;
+  --card: #141920;
+  --card2: #1a2130;
+  --border: #1e2736;
+  --border-hi: #2d3d52;
+  --accent: #f0a500;
+  --accent2: #ffcc44;
+  --accent-glow: rgba(240,165,0,0.18);
+  --accent-dim: rgba(240,165,0,0.08);
+  --text: #d4dce8;
+  --text-dim: #7a8ca0;
+  --text-muted: #3a4a5a;
+  --green: #22d3a0;
+  --red: #f05060;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Noto Sans TC', system-ui, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,165,0,0.07), transparent),
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Header ── */
+header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(8,10,14,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 56px;
+}
+.brand {
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  color: var(--accent); letter-spacing: 0.08em;
+  display: flex; align-items: center; gap: 8px;
+}
+.brand-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.step-nav { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; }
+.step-dot {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 20px;
+  color: var(--text-muted); transition: all 0.3s ease;
+}
+.step-dot.done { color: var(--green); }
+.step-dot.active { color: var(--accent); background: var(--accent-dim); }
+.step-dot .num {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; transition: all 0.3s;
+}
+.step-dot.active .num { background: var(--accent); color: #000; }
+.step-dot.done .num { background: var(--green); color: #000; }
+.step-connector { width: 20px; height: 1px; background: var(--border); }
+@media(max-width:600px){.step-label{display:none}.step-connector{width:10px}}
+.ver-badge {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  color: var(--text-muted); letter-spacing: 0.08em;
+  padding: 3px 7px; border: 1px solid var(--border); border-radius: 4px;
+}
+@media(max-width:480px){ .ver-badge { display: none; } }
+
+/* ── Main ── */
+main { max-width: 900px; margin: 0 auto; padding: 32px 16px 0; }
+.step-section { display: none; animation: fadeUp 0.4s ease; }
+.step-section.active { display: block; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── Cards ── */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+.card-title {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--accent); letter-spacing: 0.12em; text-transform: uppercase;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.card-title::before { content:''; display:block; width:3px; height:14px; background:var(--accent); border-radius:2px; }
+
+/* ── Form ── */
+label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; letter-spacing: 0.04em; }
+input[type=text], input[type=time], select {
+  width: 100%; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-family: var(--mono);
+  font-size: 13px; padding: 10px 12px; outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+input[type=text]::placeholder { color: var(--text-muted); font-family: var(--mono); }
+.form-row { display: grid; gap: 12px; margin-bottom: 14px; }
+.form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+.form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+@media(max-width:500px){ .form-row.cols-2,.form-row.cols-3{grid-template-columns:1fr} }
+
+/* ── Upload ── */
+.upload-zone {
+  border: 1.5px dashed var(--border-hi); border-radius: 10px;
+  background: var(--panel); padding: 36px 20px; text-align: center;
+  cursor: pointer; transition: all 0.25s ease;
+}
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+.upload-zone .icon { font-size: 32px; margin-bottom: 8px; }
+.upload-zone h3 { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+.upload-zone p { font-size: 12px; color: var(--text-dim); }
+#fileInput { display: none; }
+.upload-preview { display: none; border-radius: 10px; overflow: hidden; position: relative; background: var(--panel); border: 1px solid var(--border); }
+.upload-preview img { width: 100%; display: block; max-height: 280px; object-fit: contain; }
+.preview-label { position: absolute; top: 8px; right: 8px; background: var(--green); color: #000; font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
+.preview-change { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); color: var(--text-dim); font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s; }
+.preview-change:hover { color: var(--text); border-color: var(--border-hi); }
+
+/* ── Scan ── */
+.scan-container { position: relative; border-radius: 10px; overflow: hidden; background: var(--panel); border: 1px solid var(--border); }
+.scan-container img { width: 100%; display: block; max-height: 220px; object-fit: contain; }
+.scan-line {
+  display: none; position: absolute; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent2) 50%, var(--accent) 70%, transparent 100%);
+  box-shadow: 0 0 12px var(--accent), 0 0 30px var(--accent-glow);
+  animation: scanning 1.8s ease-in-out infinite; top: 0;
+}
+@keyframes scanning { 0%{top:0;opacity:0} 5%{opacity:1} 90%{top:100%;opacity:1} 100%{top:100%;opacity:0} }
+.scan-overlay { display: none; position: absolute; inset: 0; background: rgba(8,10,14,0.4); align-items: center; justify-content: center; }
+.scan-overlay.show { display: flex; }
+.scan-badge { background: rgba(8,10,14,0.85); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 20px; font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; box-shadow: 0 0 20px var(--accent-glow); }
+
+/* ── Loading ── */
+.loading-state { text-align: center; padding: 40px; }
+.spinner { width: 36px; height: 36px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+@keyframes spin { to{transform:rotate(360deg)} }
+.loading-text { font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: 0.1em; }
+.loading-sub { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+/* ── Calendar ── */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+.cal-head {
+  text-align: center; padding: 8px 2px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--text-muted); letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border); margin-bottom: 2px;
+}
+.cal-head:nth-child(1) { color: var(--red); }       /* 日 */
+.cal-head:nth-child(7) { color: var(--accent); }    /* 六 */
+
+.cal-cell {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 6px; min-height: 68px;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.cal-cell:hover { border-color: var(--border-hi); }
+.cal-cell.empty { background: transparent; border-color: transparent; cursor: default; pointer-events: none; }
+.cal-cell.is-sun { border-left: 2px solid rgba(240,80,96,0.25); }
+.cal-cell.is-sat { border-left: 2px solid rgba(240,165,0,0.25); }
+.cal-cell.today { border-color: var(--accent) !important; }
+
+.cal-num {
+  font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+  margin-bottom: 5px; line-height: 1;
+}
+.cal-cell.is-sun .cal-num { color: var(--red); }
+.cal-cell.is-sat .cal-num { color: var(--accent); }
+
+.cal-code {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 32px; padding: 3px 6px; border-radius: 5px;
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: filter 0.15s;
+}
+.cal-code:hover { filter: brightness(1.25); }
+.cal-code.rest { background: var(--card2); color: var(--text-muted); }
+.cal-code.empty-code { color: var(--text-muted); font-size: 10px; }
+
+/* inline edit overlay */
+.cal-cell.editing { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-glow); }
+.cal-edit-input {
+  position: absolute; inset: 0; border-radius: 7px;
+  background: var(--card2); border: none; outline: none;
+  text-align: center; font-family: var(--mono); font-size: 14px;
+  font-weight: 600; color: var(--accent); letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Stats ── */
+.stats-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat-chip { background: var(--card2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-family: var(--mono); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+.stat-chip .val { color: var(--accent); font-weight: 600; }
+
+/* ── Buttons ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 24px; border-radius: 8px; border: none; font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s ease; }
+.btn-primary { background: var(--accent); color: #0a0700; box-shadow: 0 0 20px var(--accent-glow); }
+.btn-primary:hover { background: var(--accent2); box-shadow: 0 0 30px rgba(240,165,0,0.35); transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--border-hi); color: var(--text); }
+.btn-green { background: var(--green); color: #001a12; font-size: 15px; padding: 14px 32px; box-shadow: 0 0 24px rgba(34,211,160,0.2); }
+.btn-green:hover { filter: brightness(1.1); box-shadow: 0 0 36px rgba(34,211,160,0.35); transform: translateY(-1px); }
+.btn-row { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+
+/* ── Events ── */
+.event-list { display: flex; flex-direction: column; gap: 8px; }
+.event-item { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+.event-date { font-family: var(--mono); font-size: 12px; color: var(--text-dim); min-width: 105px; }
+.event-code { min-width: 36px; height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.event-time { font-family: var(--mono); font-size: 12px; color: var(--green); }
+.event-label { font-size: 13px; color: var(--text); flex: 1; }
+
+/* ── Export how-to ── */
+.export-how { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+.export-how h4 { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+.how-step { display: flex; gap: 10px; margin-bottom: 10px; font-size: 13px; align-items: flex-start; }
+.how-num { width: 22px; height: 22px; border-radius: 50%; background: var(--border); color: var(--text-dim); font-family: var(--mono); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+
+/* ── Notice / Toast ── */
+.notice { background: rgba(240,165,0,0.06); border: 1px solid rgba(240,165,0,0.2); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 16px; }
+.notice strong { color: var(--accent); }
+.warn-notice { background: rgba(240,80,96,0.06); border: 1px solid rgba(240,80,96,0.2); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 16px; }
+.warn-notice strong { color: var(--red); }
+.name-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.name-chip { padding: 6px 12px; border-radius: 6px; background: var(--card2); border: 1px solid var(--border); font-size: 12px; color: var(--text-dim); cursor: pointer; font-family: var(--mono); transition: all 0.15s; }
+.name-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.toast { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%) translateY(80px); background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 13px; color: var(--text); box-shadow: 0 8px 32px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 999; white-space: nowrap; }
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.success { border-color: var(--green); color: var(--green); }
+.toast.error { border-color: var(--red); color: var(--red); }
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+.hidden { display: none !important; }
+h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+p.sub { font-size: 13px; color: var(--text-dim); margin-bottom: 24px; line-height: 1.6; }
+.mt-8{margin-top:8px} .mt-12{margin-top:12px} .mt-16{margin-top:16px}
+
+/* ── Sync Log ── */
+.sync-log { display: flex; flex-direction: column; gap: 8px; }
+.sync-log-line { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; }
+.sync-log-line .s-mark { width: 16px; text-align: center; flex-shrink: 0; color: var(--text-muted); }
+.sync-log-line .s-text { color: var(--text-dim); }
+.sync-log-line.s-done .s-mark { color: var(--green); }
+.sync-log-line.s-done .s-text { color: var(--text); }
+.sync-log-line.s-spin .s-mark { color: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.sync-log-line.s-spin .s-text { color: var(--accent); }
+.sync-log-line.s-err  .s-mark { color: var(--red); }
+.sync-log-line.s-err  .s-text { color: var(--red); }
+.sync-progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 14px; overflow: hidden; }
+.sync-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.35s ease; width: 0%; }
+.sync-result { text-align: center; padding: 16px 0 4px; }
+.sync-result .big { font-size: 28px; margin-bottom: 8px; }
+.sync-result p { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+/* ── iPhone / Touch optimizations ── */
+button, .cal-cell, .name-chip { touch-action: manipulation; }
+.btn-primary:active { background: var(--accent2); transform: scale(0.98); }
+.btn-ghost:active { border-color: var(--border-hi); color: var(--text); }
+.cal-cell:active:not(.empty) { opacity: 0.75; }
+.name-chip:active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+/* Prevent iOS Safari auto-zoom on input focus (requires font-size >= 16px) */
+@media (hover: none) and (pointer: coarse) {
+  input, select { font-size: 16px !important; }
+  .name-chip { padding: 10px 16px; }
+}
+
+@media (max-width: 600px) {
+  header { padding: 0 14px; }
+  main { padding: 20px 12px 0; }
+  .card { padding: 16px; }
+  h2 { font-size: 18px; }
+  .btn-row { flex-direction: column-reverse; }
+  .btn-row .btn { width: 100%; justify-content: center; }
+  .event-item { flex-wrap: wrap; gap: 4px 10px; }
+  .event-date { min-width: unset; width: 100%; font-size: 11px; }
+  .event-time { font-size: 11px; margin-left: auto; }
+  .calendar-grid { gap: 3px; }
+  .cal-cell { padding: 5px 4px; min-height: 58px; border-radius: 6px; }
+  .cal-code { font-size: 11px; padding: 2px 4px; min-width: 26px; }
+  .export-how { padding: 14px; }
+  .how-step { font-size: 12px; }
+}
 </style>
 </head>
-<body class="bg-slate-100 min-h-screen font-sans">
+<body>
 
-<div class="max-w-5xl mx-auto px-4 py-8">
+<header>
+  <div class="brand"><div class="brand-dot"></div>班表 → 行事曆</div>
+  <div class="step-nav">
+    <div class="step-dot active" id="nav1"><div class="num">1</div><span class="step-label">上傳</span></div>
+    <div class="step-connector"></div>
+    <div class="step-dot" id="nav2"><div class="num">2</div><span class="step-label">確認班別</span></div>
+    <div class="step-connector"></div>
+    <div class="step-dot" id="nav3"><div class="num">3</div><span class="step-label">匯出行事曆</span></div>
+  </div>
+  <div class="ver-badge">v1.0.0</div>
+</header>
 
-  <!-- Header -->
-  <div class="text-center mb-8 fade-in">
-    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">班表同步工具</h1>
-    <p class="text-slate-500 mt-2 text-sm">上傳班表圖片 → AI 辨識班別 → 確認 → 匯出行事曆</p>
+<main>
+
+<!-- ╔══════════════ STEP 1 ══════════════╗ -->
+<section class="step-section active" id="s1">
+  <h2>上傳班表</h2>
+  <p class="sub">上傳班表圖片，輸入您的姓名與班表月份，即可開始 AI 辨識。</p>
+
+  <div class="card">
+    <div class="card-title">上傳班表圖片</div>
+    <div class="notice">
+      <strong>準確度建議：</strong>請上傳清晰截圖（PNG/JPG），確保橫向完整顯示所有日期欄位。
+    </div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">📋</div>
+      <h3>點擊或拖放班表圖片</h3>
+      <p>支援 PNG、JPG、WEBP 格式</p>
+    </div>
+    <div class="upload-preview" id="uploadPreview">
+      <img id="previewImg" src="" alt="班表預覽">
+      <div class="preview-label">✓ 已上傳</div>
+      <div class="preview-change" onclick="document.getElementById('fileInput').click()">更換圖片</div>
+    </div>
+    <input type="file" id="fileInput" accept="image/*">
   </div>
 
-  <!-- Steps Indicator -->
-  <div id="steps-indicator" class="flex items-center justify-center mb-8 px-2"></div>
+  <div class="card">
+    <div class="card-title">員工資訊</div>
+    <div class="form-row">
+      <div>
+        <label>您在班表上的姓名</label>
+        <input type="text" id="empName" placeholder="請輸入完整姓名，如：Wilson LIU">
+      </div>
+    </div>
+    <div class="form-row cols-2">
+      <div>
+        <label>班表年份</label>
+        <select id="selYear"></select>
+      </div>
+      <div>
+        <label>班表月份</label>
+        <select id="selMonth">
+          <option value="1">1 月</option><option value="2">2 月</option>
+          <option value="3">3 月</option><option value="4">4 月</option>
+          <option value="5">5 月</option><option value="6">6 月</option>
+          <option value="7">7 月</option><option value="8">8 月</option>
+          <option value="9">9 月</option><option value="10">10 月</option>
+          <option value="11">11 月</option><option value="12">12 月</option>
+        </select>
+      </div>
+    </div>
+  </div>
 
-  <!-- Main Content -->
-  <div id="step-content" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 fade-in"></div>
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="startExtraction()">開始 AI 分析 →</button>
+  </div>
+</section>
 
-</div>
+<!-- ╔══════════════ STEP 2 ══════════════╗ -->
+<section class="step-section" id="s2">
+  <h2>確認班別</h2>
+  <p class="sub">請核對 AI 辨識的結果是否正確。點擊任何日期格子可直接修改班別代碼。</p>
 
-<!-- Toast container -->
-<div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+  <div class="card">
+    <div class="card-title">班表圖片</div>
+    <div class="scan-container" id="scanContainer">
+      <img id="scanImg" src="" alt="">
+      <div class="scan-line" id="scanLine"></div>
+      <div class="scan-overlay" id="scanOverlay">
+        <div class="scan-badge">AI 正在辨識中…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="resultCard">
+    <div id="loadingState" class="loading-state">
+      <div class="spinner"></div>
+      <div class="loading-text">ANALYZING SCHEDULE</div>
+      <div class="loading-sub">Gemini 正在從左至右掃描您的班表…</div>
+    </div>
+
+    <div id="resultContent" class="hidden">
+      <div class="card-title">
+        <span id="resultMonthLabel"></span>
+        <span id="resultName" style="color:var(--text-dim);font-weight:400;letter-spacing:0;margin-left:8px"></span>
+      </div>
+      <div class="stats-row" id="statsRow"></div>
+      <div id="unknownWarn" class="warn-notice hidden">
+        <strong>⚠ 發現未知代碼：</strong><span id="unknownList"></span>
+        — 這些代碼不在系統內，匯出時將自動略過。如需加入，請在格子上修改為已知代碼。
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+      <p class="text-dim mt-12" style="font-size:11px">💡 點擊任何班別格子可直接修改代碼，按 Enter 確認，Esc 取消</p>
+    </div>
+
+    <div id="notFoundContent" class="hidden">
+      <div class="card-title" style="color:var(--red)">找不到此員工</div>
+      <p style="font-size:13px;color:var(--text-dim)" id="notFoundMsg"></p>
+      <div id="availableNames"></div>
+    </div>
+  </div>
+
+  <div class="btn-row hidden" id="step2Btns">
+    <button class="btn btn-ghost" onclick="goToStep(1)">← 重新上傳</button>
+    <button class="btn btn-ghost" onclick="reExtract()">🔄 重新辨識</button>
+    <button class="btn btn-primary" onclick="goToStep(3)">確認，匯出行事曆 →</button>
+  </div>
+</section>
+
+<!-- ╔══════════════ STEP 3 ══════════════╗ -->
+<section class="step-section" id="s3">
+  <h2>同步行事曆</h2>
+  <p class="sub">確認班次無誤後，點擊同步按鈕直接寫入 Google 日曆。同步前會自動清除該月舊行程，避免重複。</p>
+
+  <div class="card">
+    <div class="card-title">班次摘要</div>
+    <div class="stats-row" id="exportStats"></div>
+    <div class="event-list" id="eventPreview"></div>
+    <p class="text-dim mt-12" style="font-size:11px" id="moreEventsNote"></p>
+  </div>
+
+  <div class="card" id="syncCard">
+    <!-- Idle -->
+    <div id="syncIdle" style="text-align:center">
+      <button class="btn btn-green" onclick="syncToGoogle()" style="width:100%;max-width:420px">
+        ↑ 同步到 Google 日曆
+      </button>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:10px;font-family:var(--mono)">
+        同步前自動清除該月舊行程 · 寫入指定行事曆
+      </p>
+    </div>
+    <!-- Progress -->
+    <div id="syncProgress" class="hidden">
+      <div class="sync-log" id="syncLog"></div>
+      <div class="sync-progress-bar">
+        <div class="sync-progress-fill" id="syncFill"></div>
+      </div>
+    </div>
+    <!-- Done -->
+    <div id="syncDone" class="hidden sync-result">
+      <div class="big">✓</div>
+      <p id="syncDoneMsg"></p>
+      <button class="btn btn-ghost mt-16" onclick="resetSyncUI()" style="font-size:12px;padding:8px 18px">重新同步</button>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goToStep(2)">← 返回修改</button>
+    <button class="btn btn-ghost" onclick="goToStep(1)">重新開始</button>
+  </div>
+</section>
+
+</main>
+<div class="toast" id="toast"></div>
 
 <script>
-// ─── State ────────────────────────────────────────────────────────────────────
-const PROVIDERS = {
-  anthropic: {
-    name: 'Anthropic Claude',
-    defaultModel: 'claude-opus-4-7',
-    models: [
-      { id: 'claude-opus-4-7',          label: 'claude-opus-4-7',    note: '最強，較慢' },
-      { id: 'claude-sonnet-4-6',         label: 'claude-sonnet-4-6',  note: '均衡' },
-      { id: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4-5',   note: '最快' },
-    ],
-    placeholder: 'sk-ant-api03-...',
-    hint: 'console.anthropic.com',
-    hintUrl: 'https://console.anthropic.com',
-    badge: 'bg-violet-100 text-violet-700 border-violet-300',
-  },
-  openai: {
-    name: 'OpenAI',
-    defaultModel: 'gpt-4o',
-    models: [
-      { id: 'gpt-4o',      label: 'GPT-4o',      note: '最準確' },
-      { id: 'gpt-4o-mini', label: 'GPT-4o mini', note: '省費用' },
-    ],
-    placeholder: 'sk-...',
-    hint: 'platform.openai.com',
-    hintUrl: 'https://platform.openai.com/api-keys',
-    badge: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  },
-  google: {
-    name: 'Google Gemini',
-    defaultModel: 'gemini-1.5-flash',
-    models: [
-      { id: 'gemini-1.5-flash',    label: 'Gemini 1.5 Flash',    note: '穩定，推薦' },
-      { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B', note: '輕量省費' },
-      { id: 'gemini-1.5-pro',      label: 'Gemini 1.5 Pro',      note: '高準確度' },
-    ],
-    placeholder: 'AIza...',
-    hint: 'aistudio.google.com',
-    hintUrl: 'https://aistudio.google.com/app/apikey',
-    badge: 'bg-blue-100 text-blue-700 border-blue-300',
-  },
+// ═══════════════════════════════════════════════
+//  HARDCODED CONFIG
+// ═══════════════════════════════════════════════
+const GEMINI_KEY = 'AIzaSyA-c4TIG86922v1MM7-GkJ_Y9Q6IQcfEnc';
+const GEMINI_MODEL = 'gemini-3.1-pro-preview';
+const CALENDAR_ID = '1461720c368bce8a511b5531e89d08899056a19676f42603792faf426838b716@group.calendar.google.com';
+const OAUTH_CLIENT_ID = '263248100982-c6pb7r9o6n0tdl3ek0vurliuqfr8jhc4.apps.googleusercontent.com';
+const OAUTH_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+let gToken = null; // { token, expiry }
+
+const SHIFT_PRESETS = {
+  'M8':  { label: 'M8',     start: '09:30', end: '18:30', skip: false },
+  'MA8': { label: 'MA8',    start: '09:30', end: '16:00', skip: false },
+  'M':   { label: 'M',      start: '10:00', end: '19:00', skip: false },
+  'MC':  { label: 'MC',     start: '10:00', end: '19:00', skip: false },
+  'MK':  { label: 'MK',     start: '10:00', end: '19:00', skip: false },
+  'MA':  { label: 'MA',     start: '10:00', end: '16:30', skip: false },
+  'H':   { label: 'H',      start: '11:00', end: '20:00', skip: false },
+  'H8':  { label: 'H8',     start: '11:00', end: '20:00', skip: false },
+  'HK':  { label: 'HK',     start: '11:00', end: '20:00', skip: false },
+  'E':   { label: 'E',      start: '11:30', end: '20:30', skip: false },
+  'EC':  { label: 'EC',     start: '11:30', end: '20:30', skip: false },
+  'EF':  { label: 'EF',     start: '11:30', end: '20:30', skip: false },
+  'E8':  { label: 'E8',     start: '11:30', end: '20:30', skip: false },
+  'P':   { label: 'P',      start: '13:00', end: '20:00', skip: false },
+  'PF':  { label: 'PF',     start: '13:30', end: '20:30', skip: false },
+  'PC':  { label: 'PC',     start: '13:30', end: '20:30', skip: false },
+  'PK':  { label: 'PK',     start: '13:30', end: '20:30', skip: false },
+  'RO':  { label: '休假',    start: '',      end: '',      skip: true  },
+  'CL':  { label: '國定假日', start: '',      end: '',      skip: true  },
+  'AL':  { label: '年假',    start: '',      end: '',      skip: true  },
+  'SL':  { label: '病假',    start: '',      end: '',      skip: true  },
 };
 
-const _savedProvider = localStorage.getItem('sched_provider') || 'anthropic';
-// Migrate: clear any saved model that no longer exists in the models list
-Object.keys(PROVIDERS).forEach(key => {
-  const saved = localStorage.getItem('sched_model_' + key);
-  if (saved && !PROVIDERS[key].models.some(m => m.id === saved)) {
-    localStorage.removeItem('sched_model_' + key);
-  }
-});
-// Normalize codeConfig keys to uppercase (one-time migration)
-try {
-  const rawCfg = localStorage.getItem('sched_code_cfg');
-  if (rawCfg) {
-    const cfg = JSON.parse(rawCfg);
-    const normalized = {};
-    Object.entries(cfg).forEach(([k, v]) => { normalized[k.toUpperCase()] = v; });
-    localStorage.setItem('sched_code_cfg', JSON.stringify(normalized));
-  }
-} catch(e) {}
-const _savedModel = localStorage.getItem('sched_model_' + _savedProvider) || PROVIDERS[_savedProvider].defaultModel;
-const state = {
-  step: 1,
-  provider: _savedProvider,
-  model: _savedModel,
-  apiKey: localStorage.getItem('sched_api_key_' + _savedProvider) || localStorage.getItem('sched_api_key') || '',
-  imageFile: null,
-  imageDataUrl: null,
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+const S = {
   imageBase64: null,
-  imageMimeType: 'image/jpeg',
-  rawData: null,
-  selectedName: null,
-  myShifts: {},        // { "1": "RO", "2": "M", ... }
-  month: '',           // "2025-05"
-  uniqueCodes: [],
-  codeConfig: JSON.parse(localStorage.getItem('sched_code_cfg') || 'null') || defaultCodeConfig(),
-  events: [],
+  imageMime: null,
+  empName: localStorage.getItem('sched_name') || '',
+  year: new Date().getFullYear(),
+  month: new Date().getMonth() + 1,
+  schedule: [],
 };
 
-function defaultCodeConfig() {
-  return {
-    'M':    { label: '早班',   type: 'work',   start: '09:00', end: '18:00' },
-    'M8':   { label: '早班8H', type: 'work',   start: '09:00', end: '18:00' },
-    'MA':   { label: '早班',   type: 'work',   start: '09:00', end: '18:00' },
-    'MAB':  { label: '早班B',  type: 'work',   start: '09:00', end: '18:00' },
-    'MA8':  { label: '早班8H', type: 'work',   start: '09:00', end: '18:00' },
-    'E':    { label: '晚班',   type: 'work',   start: '13:00', end: '22:00' },
-    'E8':   { label: '晚班8H', type: 'work',   start: '14:00', end: '22:00' },
-    'EF':   { label: '晚班F',  type: 'work',   start: '13:00', end: '22:00' },
-    'EC':   { label: '晚班C',  type: 'work',   start: '13:00', end: '22:00' },
-    'H':    { label: '班',     type: 'work',   start: '10:00', end: '19:00' },
-    'H8':   { label: '班8H',   type: 'work',   start: '10:00', end: '19:00' },
-    'HK':   { label: '班K',    type: 'work',   start: '10:00', end: '19:00' },
-    'P':    { label: '班',     type: 'work',   start: '10:00', end: '16:00' },
-    'PF':   { label: '班F',    type: 'work',   start: '10:00', end: '16:00' },
-    'KP':   { label: '班KP',   type: 'work',   start: '10:00', end: '19:00' },
-    'CL':   { label: '收班',   type: 'work',   start: '14:00', end: '22:00' },
-    'RO':   { label: '休假',   type: 'off',    start: '',      end: '' },
-    'OL':   { label: '休假',   type: 'off',    start: '',      end: '' },
-    'AL':   { label: '年假',   type: 'leave',  start: '',      end: '' },
-    'MC':   { label: '病假',   type: 'leave',  start: '',      end: '' },
-    'SL':   { label: '病假',   type: 'leave',  start: '',      end: '' },
-    'D':    { label: '班',     type: 'work',   start: '10:00', end: '19:00' },
-    'M8B':  { label: '早班8B', type: 'work',   start: '09:00', end: '18:00' },
-    'ROP':  { label: '休假P',  type: 'off',    start: '',      end: '' },
-    'M8CL': { label: '早/收',  type: 'work',   start: '09:00', end: '22:00' },
-  };
-}
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+(function init() {
+  // Pre-fill saved name
+  if (S.empName) document.getElementById('empName').value = S.empName;
 
-// ─── Steps ────────────────────────────────────────────────────────────────────
-const STEPS = [
-  { id: 1, label: '上傳',   icon: '📤' },
-  { id: 2, label: '辨識',   icon: '🔍' },
-  { id: 3, label: '選人',   icon: '👤' },
-  { id: 4, label: '確認',   icon: '✅' },
-  { id: 5, label: '時間',   icon: '⏰' },
-  { id: 6, label: '匯出',   icon: '📅' },
-];
-
-// ─── Render Engine ─────────────────────────────────────────────────────────────
-function render() {
-  renderSteps();
-  const el = document.getElementById('step-content');
-  el.classList.remove('fade-in');
-  void el.offsetWidth;
-  el.classList.add('fade-in');
-
-  switch (state.step) {
-    case 1: el.innerHTML = renderStep1(); bindStep1(); break;
-    case 2: el.innerHTML = renderStep2(); runStep2(); break;
-    case 3: el.innerHTML = renderStep3(); break;
-    case 4: el.innerHTML = renderStep4(); break;
-    case 5: el.innerHTML = renderStep5(); break;
-    case 6: el.innerHTML = renderStep6(); break;
-  }
-}
-
-function renderSteps() {
-  document.getElementById('steps-indicator').innerHTML = STEPS.map((s, i) => {
-    const done   = s.id < state.step;
-    const active = s.id === state.step;
-    const dot = done   ? 'bg-emerald-500 text-white ring-2 ring-emerald-300' :
-                active ? 'bg-blue-600 text-white ring-2 ring-blue-300' :
-                         'bg-slate-200 text-slate-400';
-    const line = i < STEPS.length - 1
-      ? `<div class="flex-1 h-0.5 mx-1 ${done ? 'bg-emerald-400' : 'bg-slate-200'}"></div>`
-      : '';
-    return `
-      <div class="flex items-center min-w-0">
-        <div class="flex flex-col items-center shrink-0">
-          <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${dot}">
-            ${done ? '✓' : s.icon}
-          </div>
-          <span class="text-xs mt-1 ${active ? 'text-blue-600 font-semibold' : 'text-slate-400'} hidden sm:block whitespace-nowrap">${s.label}</span>
-        </div>
-        ${line}
-      </div>`;
-  }).join('');
-}
-
-// ─── Step 1: Upload ────────────────────────────────────────────────────────────
-function renderStep1() {
-  const prov = PROVIDERS[state.provider];
-  return `
-  <div class="space-y-6">
-    <h2 class="text-xl font-bold text-slate-800">上傳班表圖片</h2>
-
-    <!-- Provider Selector -->
-    <div>
-      <p class="text-sm font-semibold text-slate-700 mb-2">選擇 AI 供應商</p>
-      <div class="grid grid-cols-3 gap-2">
-        ${Object.entries(PROVIDERS).map(([key, p]) => `
-          <button onclick="selectProvider('${key}')"
-            class="p-3 border-2 rounded-xl text-left transition-all ${state.provider === key ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}">
-            <div class="text-xs font-bold ${state.provider === key ? 'text-blue-700' : 'text-slate-600'} leading-tight">${p.name}</div>
-            <div class="mt-1">
-              <span class="text-xs px-1.5 py-0.5 rounded border ${p.badge} block truncate">${state.provider === key ? state.model : p.defaultModel}</span>
-            </div>
-          </button>`).join('')}
-      </div>
-
-      <!-- Model Sub-selector (shown for active provider) -->
-      <div class="mt-2 border rounded-xl bg-slate-50 p-3">
-        <p class="text-xs text-slate-500 mb-2 font-medium">模型版本</p>
-        <div class="flex flex-wrap gap-2">
-          ${PROVIDERS[state.provider].models.map(m => `
-            <button onclick="selectModel('${m.id}')"
-              class="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${state.model === m.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'}">
-              ${m.label}
-              <span class="ml-1 opacity-70">${m.note}</span>
-            </button>`).join('')}
-        </div>
-      </div>
-    </div>
-
-    <!-- API Key -->
-    <div class="rounded-xl bg-amber-50 border border-amber-200 p-4">
-      <div class="flex items-start gap-2 mb-3">
-        <span class="text-lg">🔑</span>
-        <div>
-          <p class="font-semibold text-amber-800 text-sm">${prov.name} API 金鑰</p>
-          <p class="text-xs text-amber-700 mt-0.5">金鑰僅儲存於您的瀏覽器本機，不會上傳至任何伺服器。</p>
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <input type="password" id="api-key-input" value="${state.apiKey}"
-          placeholder="${prov.placeholder}"
-          class="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
-        <button onclick="toggleKey()" class="px-3 py-2 border border-amber-300 bg-white rounded-lg text-sm hover:bg-amber-50">👁</button>
-      </div>
-      <p class="text-xs text-amber-600 mt-2">尚無金鑰？前往 <a href="${prov.hintUrl}" target="_blank" class="underline">${prov.hint}</a> 申請</p>
-    </div>
-
-    <!-- Drop Zone -->
-    <div>
-      <p class="text-sm font-semibold text-slate-700 mb-2">班表圖片</p>
-      <div id="drop-zone"
-        class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
-        onclick="document.getElementById('file-input').click()">
-        <div class="text-5xl mb-3">🗓</div>
-        <p class="font-medium text-slate-600">點擊選擇或拖曳班表圖片至此</p>
-        <p class="text-xs text-slate-400 mt-1">支援 JPG、PNG、WEBP</p>
-        <input type="file" id="file-input" accept="image/*" class="hidden">
-      </div>
-
-      ${state.imageDataUrl ? `
-      <div class="mt-4 rounded-xl border overflow-hidden shadow-sm">
-        <div class="bg-slate-50 px-4 py-2 border-b flex items-center gap-2">
-          <span class="text-green-600 font-semibold text-sm">✓ 已選擇：${state.imageFile?.name || '班表圖片'}</span>
-        </div>
-        <img src="${state.imageDataUrl}" class="w-full object-contain max-h-72 bg-white">
-      </div>
-      ` : ''}
-    </div>
-
-    <!-- Tips -->
-    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-      <p class="font-semibold mb-1">📌 提示</p>
-      <ul class="list-disc list-inside space-y-0.5 text-blue-600 text-xs">
-        <li>圖片需清晰，日期與班別代碼需可辨識</li>
-        <li>班表應為橫向排列（左→右 = 日期 1→31）</li>
-        <li>若同月有多張圖片，請分次上傳</li>
-      </ul>
-    </div>
-
-    <div class="flex justify-end">
-      <button id="start-btn" onclick="startProcessing()"
-        class="px-7 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-        ${!state.apiKey || !state.imageDataUrl ? 'disabled' : ''}>
-        開始辨識 →
-      </button>
-    </div>
-  </div>`;
-}
-
-function selectProvider(key) {
-  state.provider = key;
-  state.model = localStorage.getItem('sched_model_' + key) || PROVIDERS[key].defaultModel;
-  state.apiKey = localStorage.getItem('sched_api_key_' + key) || '';
-  render();
-}
-
-function selectModel(modelId) {
-  state.model = modelId;
-  localStorage.setItem('sched_model_' + state.provider, modelId);
-  render();
-}
-
-function bindStep1() {
-  const fi = document.getElementById('file-input');
-  if (fi) fi.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); });
-
-  const dz = document.getElementById('drop-zone');
-  if (dz) {
-    dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
-    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-    dz.addEventListener('drop', e => {
-      e.preventDefault(); dz.classList.remove('drag-over');
-      const f = e.dataTransfer.files[0];
-      if (f && f.type.startsWith('image/')) loadFile(f);
-    });
+  // Populate year
+  const yr = document.getElementById('selYear');
+  const cy = new Date().getFullYear();
+  for (let y = cy - 1; y <= cy + 1; y++) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y + ' 年';
+    if (y === cy) o.selected = true;
+    yr.appendChild(o);
   }
 
-  const keyInput = document.getElementById('api-key-input');
-  if (keyInput) keyInput.addEventListener('input', () => {
-    state.apiKey = keyInput.value.trim();
-    const btn = document.getElementById('start-btn');
-    if (btn) btn.disabled = !state.apiKey || !state.imageDataUrl;
+  // Set current month
+  document.getElementById('selMonth').value = S.month;
+
+  // File drag & drop
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) handleImageFile(f);
   });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) handleImageFile(e.target.files[0]);
+  });
+})();
+
+// ═══════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════
+function goToStep(n) {
+  document.querySelectorAll('.step-section').forEach((s, i) => s.classList.toggle('active', i + 1 === n));
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('nav' + i);
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  }
+  if (n === 3) buildExportPreview();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function loadFile(file) {
-  state.imageFile = file;
-  state.imageMimeType = file.type || 'image/jpeg';
+// ═══════════════════════════════════════════════
+//  IMAGE HANDLING
+// ═══════════════════════════════════════════════
+function handleImageFile(file) {
+  S.imageMime = file.type || 'image/jpeg';
   const reader = new FileReader();
   reader.onload = e => {
-    state.imageDataUrl = e.target.result;
-    state.imageBase64 = e.target.result.split(',')[1];
-    render();
+    S.imageBase64 = e.target.result.split(',')[1];
+    document.getElementById('previewImg').src = e.target.result;
+    document.getElementById('scanImg').src = e.target.result;
+    document.getElementById('uploadZone').style.display = 'none';
+    document.getElementById('uploadPreview').style.display = 'block';
   };
   reader.readAsDataURL(file);
 }
 
-function toggleKey() {
-  const el = document.getElementById('api-key-input');
-  if (el) el.type = el.type === 'password' ? 'text' : 'password';
+// ═══════════════════════════════════════════════
+//  EXTRACTION
+// ═══════════════════════════════════════════════
+async function startExtraction() {
+  const name = document.getElementById('empName').value.trim();
+  const year = parseInt(document.getElementById('selYear').value);
+  const month = parseInt(document.getElementById('selMonth').value);
+
+  if (!S.imageBase64) { toast('請先上傳班表圖片', 'error'); return; }
+  if (!name) { toast('請輸入您在班表上的姓名', 'error'); return; }
+
+  S.empName = name;
+  S.year = year;
+  S.month = month;
+  localStorage.setItem('sched_name', name);  // 記住姓名
+
+  goToStep(2);
+  await runExtraction();
 }
 
-function startProcessing() {
-  const keyInput = document.getElementById('api-key-input');
-  if (keyInput) state.apiKey = keyInput.value.trim();
-  localStorage.setItem('sched_provider', state.provider);
-  localStorage.setItem('sched_api_key_' + state.provider, state.apiKey);
-  localStorage.setItem('sched_api_key', state.apiKey); // legacy fallback
-  if (!state.apiKey) { toast('請輸入 API 金鑰', 'error'); return; }
-  if (!state.imageBase64) { toast('請上傳班表圖片', 'error'); return; }
-  state.step = 2;
-  render();
+async function reExtract() {
+  document.getElementById('loadingState').classList.remove('hidden');
+  document.getElementById('resultContent').classList.add('hidden');
+  document.getElementById('notFoundContent').classList.add('hidden');
+  document.getElementById('step2Btns').classList.add('hidden');
+  await runExtraction();
 }
 
-// ─── Step 2: Processing ────────────────────────────────────────────────────────
-function renderStep2() {
-  const prov = PROVIDERS[state.provider];
-  return `
-  <div class="text-center py-16 space-y-6">
-    <div class="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full spinner mx-auto"></div>
-    <div>
-      <h2 class="text-xl font-bold text-slate-800">AI 辨識班表中</h2>
-      <p id="proc-status" class="text-slate-500 text-sm mt-2">連接 ${prov.name}...</p>
-      <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded border ${prov.badge}">${state.model}</span>
-    </div>
-    <div class="max-w-xs mx-auto bg-slate-100 rounded-full h-2 overflow-hidden">
-      <div id="proc-bar" class="h-full bg-blue-500 transition-all duration-700 rounded-full" style="width:5%"></div>
-    </div>
-    <p class="text-xs text-slate-400">辨識複雜班表通常需要 15-30 秒</p>
-  </div>`;
-}
+async function runExtraction() {
+  const scanLine = document.getElementById('scanLine');
+  const scanOverlay = document.getElementById('scanOverlay');
+  scanLine.style.display = 'block';
+  scanOverlay.classList.add('show');
 
-function setProgress(msg, pct) {
-  const s = document.getElementById('proc-status');
-  const b = document.getElementById('proc-bar');
-  if (s) s.textContent = msg;
-  if (b) b.style.width = pct + '%';
-}
+  const prompt = `請仔細分析這張工作班表圖片。
 
-const SCHEDULE_PROMPT = `你是一個精確的表格資料提取工具。請分析這張工作班表（排班表）圖片，以 JSON 格式輸出所有員工的班別資料。
+【重要說明】
+- 班表為橫向排列：日期從左至右（第1天→最後一天）
+- 最左欄為員工姓名
+- 頂部行為日期數字（1, 2, 3 ... 最多到31）
+- 每個格子包含班別代碼（通常為1-3個英文字母，如M、MA、H、E、P、RO等）
 
-班表結構：
-- 最上方：月份、節假日/活動名稱
-- 最左欄：員工編號（數字或空白）
-- 第二欄：員工英文姓名
-- 第三欄：所屬組別/類別（如 M UNIVERSE、WLG 等，可能為空）
-- START 欄後是日期欄（1號到該月月底，由左至右依序排列）
-- 每個日期格填有班別代碼（如 RO、M、E8、H、cl 等），空格代表無班
-- 最右側：AL、CL 統計欄（忽略）
+【你的任務】
+找到名為「${S.empName}」的員工，提取他/她每一天的班別代碼。
 
-⚠️ 關鍵要求：
-1. 嚴格由左至右讀取每一列的班別，確保每個代碼對應正確的日期序號
-2. 輸出班別代碼一律轉換為大寫（如 ro → RO，e8 → E8，ma → MA）
-3. 空白格或無內容填 null
-4. 只輸出員工資料列，跳過標題列、合計列
-5. 確保日期從 1 讀到該月最後一天，不可跳過任何欄位
+【準確度要求 - 非常重要】
+1. 請由左至右逐欄讀取，不要跳欄
+2. 先確認頂部日期欄位的總數，再逐一對應每格班別代碼
+3. 如果某格為空白，填入 ""（空字串）
+4. RO、AL、CL、SL 等假別代碼，照實回傳
 
-只輸出 JSON，不要有任何其他文字或說明：
+【回傳格式 - 只回傳 JSON，不要任何說明文字】
+找到員工時：
+{"found":true,"employee":"實際找到的姓名","schedule":[{"date":1,"code":"代碼"},{"date":2,"code":""},...直到月底]}
 
-{
-  "month": "YYYY-MM",
-  "staff": [
-    {
-      "name": "員工姓名",
-      "category": "組別（可為空字串）",
-      "shifts": {
-        "1": "代碼或null",
-        "2": "代碼或null",
-        "3": "代碼或null"
-      }
-    }
-  ]
-}`;
+找不到時：
+{"found":false,"availableNames":["姓名1","姓名2",...]}`;
 
-function extractJson(raw) {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced) return fenced[1];
-  const start = raw.indexOf('{');
-  const end   = raw.lastIndexOf('}');
-  if (start !== -1 && end !== -1) return raw.slice(start, end + 1);
-  return raw;
-}
-
-function showError(msg) {
-  const SHORT_LIMIT = 120;
-  const short = msg.length > SHORT_LIMIT ? msg.slice(0, SHORT_LIMIT) + '…' : msg;
-  const hasMore = msg.length > SHORT_LIMIT;
-
-  // Detect quota error and add helpful hint
-  const isQuota = /quota|rate.limit|exceeded|429/i.test(msg);
-  const hint = isQuota
-    ? `<div class="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 text-left max-w-sm mx-auto">
-        💡 <b>配額超限</b>：請切換至其他模型版本，或確認 API 帳號已啟用付費計畫。
-        Google 免費額度較多的版本為 <b>Gemini 1.5 Flash</b>。
-       </div>`
-    : '';
-
-  document.getElementById('step-content').innerHTML = `
-  <div class="text-center py-12 space-y-4">
-    <div class="text-5xl">❌</div>
-    <h2 class="text-xl font-bold text-red-600">辨識失敗</h2>
-    <p class="text-slate-600 max-w-sm mx-auto text-sm" id="err-short">${escHtml(short)}</p>
-    ${hasMore ? `
-      <button onclick="document.getElementById('err-short').textContent='';document.getElementById('err-full').classList.remove('hidden');this.remove()"
-        class="text-xs text-slate-400 underline">顯示完整錯誤</button>
-      <p id="err-full" class="hidden text-slate-500 max-w-md mx-auto text-xs text-left bg-slate-50 border rounded-xl p-3 whitespace-pre-wrap">${escHtml(msg)}</p>
-    ` : ''}
-    ${hint}
-    <button onclick="goTo(1)" class="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700">← 返回重試</button>
-  </div>`;
-}
-
-async function runStep2() {
-  await new Promise(r => setTimeout(r, 80));
   try {
-    let rawText;
-    if (state.provider === 'anthropic') rawText = await callAnthropic();
-    else if (state.provider === 'openai')    rawText = await callOpenAI();
-    else if (state.provider === 'google')    rawText = await callGoogle();
-    else throw new Error('未知的 AI 供應商');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: S.imageMime, data: S.imageBase64 } },
+            { text: prompt },
+          ],
+        }],
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 },
+      }),
+    });
 
-    setProgress('解析資料...', 85);
-    state.rawData = JSON.parse(extractJson(rawText));
-    state.month   = state.rawData.month || '';
-    setProgress('完成！', 100);
-    await new Promise(r => setTimeout(r, 400));
-    state.step = 3;
-    render();
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Gemini API 錯誤 ${res.status}`);
+    }
+
+    const data = await res.json();
+    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    scanLine.style.display = 'none';
+    scanOverlay.classList.remove('show');
+
+    // Parse JSON (handle possible markdown wrapping)
+    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) raw = jsonMatch[1].trim();
+    const objMatch = raw.match(/\{[\s\S]*\}/);
+    if (objMatch) raw = objMatch[0];
+
+    renderResult(JSON.parse(raw));
+
   } catch (err) {
-    showError(err.message);
+    scanLine.style.display = 'none';
+    scanOverlay.classList.remove('show');
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('notFoundContent').classList.remove('hidden');
+    document.getElementById('notFoundMsg').textContent = '發生錯誤：' + err.message;
+    document.getElementById('availableNames').innerHTML = '';
+    document.getElementById('step2Btns').classList.remove('hidden');
+    console.error(err);
   }
 }
 
-async function callAnthropic() {
-  setProgress('傳送圖片至 Claude...', 20);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-client-side-api-key-flag': 'true',
-    },
-    body: JSON.stringify({
-      model: state.model,
-      max_tokens: 8192,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: state.imageMimeType, data: state.imageBase64 } },
-          { type: 'text', text: SCHEDULE_PROMPT }
-        ]
-      }]
-    })
-  });
-  setProgress('Claude 分析中...', 55);
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e?.error?.message || `Anthropic API 錯誤 ${res.status}`);
+// ═══════════════════════════════════════════════
+//  RENDER RESULT
+// ═══════════════════════════════════════════════
+function renderResult(data) {
+  document.getElementById('loadingState').classList.add('hidden');
+
+  if (!data.found) {
+    document.getElementById('notFoundContent').classList.remove('hidden');
+    document.getElementById('notFoundMsg').textContent = `找不到「${S.empName}」。班表中找到以下員工：`;
+    const el = document.getElementById('availableNames');
+    el.innerHTML = '<div class="name-chips">' +
+      (data.availableNames || []).map(n =>
+        `<div class="name-chip" onclick="pickName('${n.replace(/'/g,"&#39;")}')">${n}</div>`
+      ).join('') + '</div>';
+    document.getElementById('step2Btns').classList.remove('hidden');
+    return;
   }
-  const data = await res.json();
-  return data.content?.[0]?.text || '';
-}
 
-async function callOpenAI() {
-  setProgress(`傳送圖片至 ${state.model}...`, 20);
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${state.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: state.model,
-      max_tokens: 8192,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:${state.imageMimeType};base64,${state.imageBase64}`, detail: 'high' } },
-          { type: 'text', text: SCHEDULE_PROMPT }
-        ]
-      }]
-    })
-  });
-  setProgress('GPT-4o 分析中...', 55);
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e?.error?.message || `OpenAI API 錯誤 ${res.status}`);
+  S.schedule = (data.schedule || []).map(item => ({
+    ...item,
+    code: item.code ? String(item.code).toUpperCase() : item.code,
+  }));
+
+  // Stats
+  const codeCounts = {};
+  S.schedule.forEach(d => { if (d.code) codeCounts[d.code] = (codeCounts[d.code] || 0) + 1; });
+  const workDays = S.schedule.filter(d => d.code && !SHIFT_PRESETS[d.code]?.skip && d.code !== '').length;
+  const unknownCodes = [...new Set(S.schedule.map(d => d.code).filter(c => c && !SHIFT_PRESETS[c]))];
+
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-chip">共 <span class="val">${S.schedule.length}</span> 天</div>
+    <div class="stat-chip">班次 <span class="val">${workDays}</span> 天</div>
+    <div class="stat-chip">代碼 <span class="val">${Object.keys(codeCounts).length}</span> 種</div>
+  `;
+
+  document.getElementById('resultMonthLabel').textContent = `${S.year}年${S.month}月`;
+  document.getElementById('resultName').textContent = `— ${data.employee}`;
+
+  // Unknown codes warning
+  const warnEl = document.getElementById('unknownWarn');
+  if (unknownCodes.length > 0) {
+    document.getElementById('unknownList').textContent = unknownCodes.join('、');
+    warnEl.classList.remove('hidden');
+  } else {
+    warnEl.classList.add('hidden');
   }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+
+  renderCalendar();
+
+  document.getElementById('resultContent').classList.remove('hidden');
+  document.getElementById('step2Btns').classList.remove('hidden');
 }
 
-async function callGoogle() {
-  setProgress(`傳送圖片至 ${state.model}...`, 20);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: state.imageMimeType, data: state.imageBase64 } },
-          { text: SCHEDULE_PROMPT }
-        ]
-      }],
-      generationConfig: { maxOutputTokens: 8192 }
-    })
+function renderCalendar() {
+  const grid = document.getElementById('calendarGrid');
+  grid.innerHTML = '';
+
+  // Day headers (Sun → Sat)
+  ['日','一','二','三','四','五','六'].forEach(d => {
+    const h = document.createElement('div');
+    h.className = 'cal-head'; h.textContent = d;
+    grid.appendChild(h);
   });
-  setProgress('Gemini 分析中...', 55);
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    const msg = e?.error?.message || `Google API 錯誤 ${res.status}`;
-    throw new Error(msg);
+
+  const firstDay = new Date(S.year, S.month - 1, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(S.year, S.month, 0).getDate();
+  const today = new Date();
+
+  // Empty leading cells
+  for (let i = 0; i < firstDay; i++) {
+    const e = document.createElement('div');
+    e.className = 'cal-cell empty';
+    grid.appendChild(e);
   }
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const entry = S.schedule.find(s => s.date === d) || { date: d, code: '' };
+    const dow = new Date(S.year, S.month - 1, d).getDay();
+    const isToday = today.getFullYear() === S.year && today.getMonth() + 1 === S.month && today.getDate() === d;
+
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell' +
+      (dow === 0 ? ' is-sun' : '') +
+      (dow === 6 ? ' is-sat' : '') +
+      (isToday ? ' today' : '');
+    cell.dataset.date = d;
+
+    const code = entry.code || '';
+    const cfg = SHIFT_PRESETS[code];
+    const isRest = cfg?.skip;
+    const isEmpty = !code;
+
+    let badgeHtml = '';
+    if (isEmpty) {
+      badgeHtml = `<div class="cal-code empty-code">—</div>`;
+    } else if (isRest) {
+      badgeHtml = `<div class="cal-code rest">${code}</div>`;
+    } else {
+      const col = codeColor(code);
+      badgeHtml = `<div class="cal-code" style="background:${col}22;color:${col};border:1px solid ${col}44">${code}</div>`;
+    }
+
+    // Time hint
+    let timeHint = '';
+    if (cfg && !cfg.skip && cfg.start) {
+      timeHint = `<div style="font-size:9px;color:var(--text-muted);margin-top:3px;font-family:var(--mono)">${cfg.start}</div>`;
+    }
+
+    cell.innerHTML = `<div class="cal-num">${d}</div>${badgeHtml}${timeHint}`;
+    cell.addEventListener('click', () => startCalEdit(cell, d));
+    grid.appendChild(cell);
+  }
 }
 
-// ─── Step 3: Name Selection ────────────────────────────────────────────────────
-function renderStep3() {
-  const staff = state.rawData?.staff || [];
-  return `
-  <div class="space-y-5">
-    <div>
-      <h2 class="text-xl font-bold text-slate-800">選擇您的姓名</h2>
-      <p class="text-slate-500 text-sm mt-1">AI 辨識出 <b>${staff.length}</b> 位員工，請點選您的名字</p>
-    </div>
+function startCalEdit(cell, dateNum) {
+  if (cell.classList.contains('editing')) return;
+  const entry = S.schedule.find(s => s.date === dateNum);
+  const current = entry ? entry.code : '';
 
-    <input type="text" id="name-search" placeholder="搜尋姓名..."
-      oninput="filterNames(this.value)"
-      class="w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+  cell.classList.add('editing');
+  const inp = document.createElement('input');
+  inp.className = 'cal-edit-input';
+  inp.type = 'text';
+  inp.value = current;
+  inp.maxLength = 5;
+  inp.style.textTransform = 'uppercase';
+  cell.appendChild(inp);
+  inp.focus();
+  inp.select();
 
-    <div id="name-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-      ${staff.map(s => nameCard(s.name, s.category)).join('')}
-    </div>
-
-    <div class="flex justify-between pt-2">
-      <button onclick="goTo(1)" class="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-50 text-sm">← 重新上傳</button>
-      <button id="confirm-name-btn" onclick="confirmName()"
-        class="px-7 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
-        ${!state.selectedName ? 'disabled' : ''}>
-        確認 →
-      </button>
-    </div>
-  </div>`;
-}
-
-function nameCard(name, cat) {
-  const sel = state.selectedName === name;
-  return `<button onclick="selectName('${escAttr(name)}')"
-    class="p-4 border-2 rounded-xl text-left active:brightness-95 hover:border-blue-400 hover:bg-blue-50 transition-all min-h-[3rem]
-           ${sel ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white'}">
-    <div class="font-semibold text-slate-800 text-sm truncate">${escHtml(name)}</div>
-    ${cat ? `<div class="text-xs text-slate-400 mt-0.5 truncate">${escHtml(cat)}</div>` : ''}
-  </button>`;
-}
-
-function filterNames(q) {
-  q = q.toLowerCase();
-  document.querySelectorAll('#name-grid button').forEach(btn => {
-    const n = btn.querySelector('.font-semibold')?.textContent?.toLowerCase() || '';
-    btn.style.display = n.includes(q) ? '' : 'none';
+  function commit() {
+    const val = inp.value.trim().toUpperCase();
+    if (entry) entry.code = val;
+    else if (val) S.schedule.push({ date: dateNum, code: val });
+    cell.classList.remove('editing');
+    renderCalendar();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { cell.classList.remove('editing'); renderCalendar(); }
   });
 }
 
-function selectName(name) {
-  state.selectedName = name;
-  document.querySelectorAll('#name-grid button').forEach(btn => {
-    const n = btn.querySelector('.font-semibold')?.textContent;
-    const sel = n === name;
-    btn.className = btn.className
-      .replace(/border-blue-600|bg-blue-50|shadow-sm|border-slate-200|bg-white/g, '')
-      .trim();
-    btn.classList.add(...(sel
-      ? ['border-blue-600', 'bg-blue-50', 'shadow-sm']
-      : ['border-slate-200', 'bg-white']));
-  });
-  const btn = document.getElementById('confirm-name-btn');
-  if (btn) btn.disabled = false;
+function pickName(name) {
+  document.getElementById('empName').value = name;
+  S.empName = name;
+  localStorage.setItem('sched_name', name);
+  goToStep(1);
 }
 
-function confirmName() {
-  if (!state.selectedName) return;
-  const person = state.rawData.staff.find(s => s.name === state.selectedName);
-  if (!person) { toast('找不到此人的資料', 'error'); return; }
-
-  state.myShifts = {};
-  Object.entries(person.shifts || {}).forEach(([d, c]) => {
-    if (c && c !== 'null' && c !== null) state.myShifts[d] = String(c).toUpperCase();
-  });
-
-  const codes = new Set(Object.values(state.myShifts));
-  state.uniqueCodes = [...codes].filter(Boolean).sort();
-
-  state.step = 4;
-  render();
-}
-
-// ─── Step 4: Review ────────────────────────────────────────────────────────────
-let editingDay = null;
-
-function renderStep4() {
-  const [yr, mo] = (state.month || '2025-05').split('-').map(Number);
-  const days = new Date(yr, mo, 0).getDate();
-  const startDow = new Date(yr, mo - 1, 1).getDay(); // 0=Sun
-
-  const DOW = ['日','一','二','三','四','五','六'];
-
-  const cells = Array.from({ length: days }, (_, i) => {
-    const day = i + 1;
-    const code = state.myShifts[String(day)] || null;
-    const cfg  = code ? (state.codeConfig[code] || {}) : {};
-    const bg   = !code             ? 'bg-white' :
-                 cfg.type === 'off'  ? 'bg-slate-50' :
-                 cfg.type === 'leave'? 'bg-amber-50' : 'bg-blue-50';
-    const tc   = !code             ? 'text-slate-200' :
-                 cfg.type === 'off'  ? 'text-slate-400' :
-                 cfg.type === 'leave'? 'text-amber-700' : 'text-blue-700';
-
-    return `<div class="border-r border-b p-1 min-h-[3.5rem] ${bg} cursor-pointer active:brightness-90 hover:brightness-95 transition-all overflow-hidden"
-              onclick="openEdit(${day})" title="點擊修改第 ${day} 天">
-      <div class="text-[10px] sm:text-xs text-slate-400 font-medium leading-none">${day}</div>
-      <div class="text-[11px] sm:text-sm font-bold ${tc} mt-0.5 leading-tight truncate">${code ? escHtml(code) : ''}</div>
-      ${code && cfg.start ? `<div class="text-[9px] sm:text-xs ${tc} opacity-70 leading-none mt-0.5">${cfg.start}</div>` : ''}
-    </div>`;
-  });
-
-  const padStart = Array(startDow).fill('<div class="border-r border-b min-h-[3.5rem] bg-slate-50"></div>');
-  const total = startDow + days;
-  const padEnd = total % 7 ? Array(7 - total % 7).fill('<div class="border-r border-b min-h-[3.5rem] bg-slate-50"></div>') : [];
-
-  const countMap = {};
-  Object.values(state.myShifts).forEach(c => { if (c) countMap[c] = (countMap[c] || 0) + 1; });
-
-  return `
-  <div class="space-y-5">
-    <div>
-      <h2 class="text-xl font-bold text-slate-800">確認班別</h2>
-      <p class="text-slate-500 text-sm mt-1">
-        <b>${escHtml(state.selectedName)}</b> · ${state.month} · 點擊任意日期可手動修改
-      </p>
-    </div>
-
-    <!-- Calendar -->
-    <div class="border rounded-xl overflow-hidden shadow-sm">
-      <div class="grid grid-cols-7 bg-slate-50 border-b">
-        ${DOW.map(d => `<div class="text-center text-xs font-semibold text-slate-500 py-2">${d}</div>`).join('')}
-      </div>
-      <div class="grid grid-cols-7">
-        ${padStart.join('')}${cells.join('')}${padEnd.join('')}
-      </div>
-    </div>
-
-    <!-- Legend -->
-    <div class="flex flex-wrap gap-3 text-xs text-slate-600">
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-blue-50 border border-blue-200 inline-block"></span>上班</span>
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-slate-50 border inline-block"></span>休假</span>
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-50 border border-amber-200 inline-block"></span>假別</span>
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-white border inline-block"></span>無資料</span>
-    </div>
-
-    <!-- Code Summary -->
-    <div class="bg-slate-50 rounded-xl p-4">
-      <p class="text-sm font-semibold text-slate-600 mb-2">班別統計</p>
-      <div class="flex flex-wrap gap-2">
-        ${Object.entries(countMap).sort((a,b) => b[1]-a[1]).map(([c,n]) =>
-          `<span class="px-3 py-1 bg-white border rounded-full text-xs text-slate-600 shadow-sm">${escHtml(c)} × ${n}</span>`
-        ).join('')}
-      </div>
-    </div>
-
-    <div class="flex justify-between pt-2">
-      <button onclick="goTo(3)" class="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-50 text-sm">← 重新選人</button>
-      <button onclick="goTo(5)" class="px-7 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700">
-        設定時間 →
-      </button>
-    </div>
-  </div>
-
-  <!-- Edit Modal -->
-  <div id="edit-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-      <h3 class="font-bold text-lg mb-1" id="edit-modal-title">修改班別</h3>
-      <p class="text-xs text-slate-400 mb-4">輸入班別代碼，留空表示該天無班</p>
-      <input type="text" id="edit-code-input"
-        class="w-full border rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
-        placeholder="如：M、E8、RO（留空=無班）"
-        onkeydown="if(event.key==='Enter')saveEdit()">
-      <div class="flex gap-3">
-        <button onclick="closeEdit()" class="flex-1 px-4 py-2.5 border rounded-xl hover:bg-slate-50 text-sm">取消</button>
-        <button onclick="saveEdit()" class="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-semibold">儲存</button>
-      </div>
-    </div>
-  </div>`;
-}
-
-function openEdit(day) {
-  editingDay = day;
-  const modal = document.getElementById('edit-modal');
-  const title = document.getElementById('edit-modal-title');
-  const input = document.getElementById('edit-code-input');
-  if (!modal) return;
-  const [yr, mo] = (state.month || '2025-05').split('-');
-  title.textContent = `修改 ${yr}/${mo}/${String(day).padStart(2,'0')} 的班別`;
-  input.value = state.myShifts[String(day)] || '';
-  modal.style.display = 'flex';
-  setTimeout(() => input.focus(), 50);
-}
-
-function closeEdit() {
-  const m = document.getElementById('edit-modal');
-  if (m) m.style.display = 'none';
-}
-
-function saveEdit() {
-  const input = document.getElementById('edit-code-input');
-  if (!input || !editingDay) return;
-  const code = input.value.trim().toUpperCase() || null;
-  if (code) state.myShifts[String(editingDay)] = code;
-  else delete state.myShifts[String(editingDay)];
-
-  const codes = new Set(Object.values(state.myShifts));
-  state.uniqueCodes = [...codes].filter(Boolean).sort();
-  closeEdit();
-  render();
-}
-
-// ─── Step 5: Code Config ───────────────────────────────────────────────────────
-function renderStep5() {
-  // Ensure all unique codes have a config entry
-  state.uniqueCodes.forEach(c => {
-    if (!state.codeConfig[c]) state.codeConfig[c] = { label: c, type: 'work', start: '09:00', end: '18:00' };
-  });
-
-  return `
-  <div class="space-y-5">
-    <div>
-      <h2 class="text-xl font-bold text-slate-800">設定班別時間</h2>
-      <p class="text-slate-500 text-sm mt-1">為您的班別代碼填入對應的上下班時間，設定自動儲存</p>
-    </div>
-
-    <div class="space-y-2">
-      <div class="hidden sm:grid grid-cols-[4rem_1fr_5.5rem_1fr] gap-2 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-        <span>代碼</span><span>名稱</span><span>類型</span><span>上班 → 下班</span>
-      </div>
-      ${state.uniqueCodes.map(code => codeRow(code)).join('')}
-    </div>
-
-    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
-      💡 類型設為「休假」或「請假」的班別，不會產生時間性行程（全天或不匯出）。設為「忽略」則完全不匯出。
-    </div>
-
-    <div class="flex justify-between pt-2">
-      <button onclick="goTo(4)" class="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-50 text-sm">← 返回確認</button>
-      <button onclick="buildEvents()" class="px-7 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700">
-        產生行程 →
-      </button>
-    </div>
-  </div>`;
-}
-
-function codeRow(code) {
-  const cfg = state.codeConfig[code] || {};
-  const isWork = cfg.type === 'work' || !cfg.type;
-  return `
-  <div class="border rounded-xl p-3 bg-white shadow-sm space-y-2">
-    <div class="flex items-center gap-2">
-      <span class="px-2.5 py-2 bg-slate-100 rounded-lg font-mono font-bold text-slate-700 text-sm min-w-[3.5rem] text-center shrink-0">${escHtml(code)}</span>
-      <input type="text" value="${escAttr(cfg.label || '')}" placeholder="班別名稱"
-        onchange="cfgSet('${escAttr(code)}','label',this.value)"
-        class="border rounded-lg px-3 py-2.5 text-sm flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-blue-300">
-      <select onchange="cfgSet('${escAttr(code)}','type',this.value)"
-        class="border rounded-lg px-2 py-2.5 text-sm shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-300">
-        <option value="work"   ${cfg.type==='work'   ?'selected':''}>上班</option>
-        <option value="off"    ${cfg.type==='off'    ?'selected':''}>休假</option>
-        <option value="leave"  ${cfg.type==='leave'  ?'selected':''}>請假</option>
-        <option value="ignore" ${cfg.type==='ignore' ?'selected':''}>忽略</option>
-      </select>
-    </div>
-    ${isWork ? `
-    <div class="flex items-center gap-2 pl-1">
-      <span class="text-xs text-slate-400 w-8 shrink-0">時間</span>
-      <input type="time" value="${cfg.start || ''}"
-        onchange="cfgSet('${escAttr(code)}','start',this.value)"
-        class="border rounded-lg px-2 py-2.5 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-blue-300">
-      <span class="text-slate-400 text-xs shrink-0">→</span>
-      <input type="time" value="${cfg.end || ''}"
-        onchange="cfgSet('${escAttr(code)}','end',this.value)"
-        class="border rounded-lg px-2 py-2.5 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-blue-300">
-    </div>` : ''}
-  </div>`;
-}
-
-function cfgSet(code, field, value) {
-  if (!state.codeConfig[code]) state.codeConfig[code] = { label: code, type: 'work', start: '', end: '' };
-  state.codeConfig[code][field] = value;
-  localStorage.setItem('sched_code_cfg', JSON.stringify(state.codeConfig));
-  if (field === 'type') render(); // refresh to show/hide time fields
-}
+// ═══════════════════════════════════════════════
+//  EXPORT
+// ═══════════════════════════════════════════════
+const DAY_NAMES = ['日','一','二','三','四','五','六'];
 
 function buildEvents() {
-  const [yr, mo] = (state.month || '2025-05').split('-').map(Number);
-  state.events = [];
+  const events = [];
+  for (const { date, code } of S.schedule) {
+    if (!code) continue;
+    const cfg = SHIFT_PRESETS[code];
+    if (!cfg || cfg.skip || !cfg.start || !cfg.end) continue;
 
-  Object.entries(state.myShifts).forEach(([day, code]) => {
-    if (!code) return;
-    const cfg = state.codeConfig[code] || {};
-    if (cfg.type === 'ignore') return;
+    const [sh, sm] = cfg.start.split(':').map(Number);
+    const [eh, em] = cfg.end.split(':').map(Number);
+    const overnight = eh < sh || (eh === 0 && em === 0 && sh !== 0);
 
-    const date = `${yr}-${String(mo).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const endDate = overnight
+      ? new Date(S.year, S.month - 1, date + 1)
+      : new Date(S.year, S.month - 1, date);
 
-    if (cfg.type === 'off') return; // skip, no event
+    events.push({
+      date,
+      code,
+      label: cfg.label,
+      startStr: fmtDt(S.year, S.month, date, sh, sm),
+      endStr: fmtDt(endDate.getFullYear(), endDate.getMonth() + 1, endDate.getDate(), eh, em),
+      startDisplay: cfg.start,
+      endDisplay: overnight ? cfg.end + '+1' : cfg.end,
+      jsDate: new Date(S.year, S.month - 1, date),
+    });
+  }
+  return events.sort((a, b) => a.date - b.date);
+}
 
-    if (cfg.type === 'leave') {
-      state.events.push({ date, title: cfg.label || code, allDay: true, code });
-    } else {
-      state.events.push({
-        date,
-        title: cfg.label ? `${cfg.label}` : code,
-        allDay: false,
-        start: cfg.start || '09:00',
-        end:   cfg.end   || '18:00',
-        code,
-      });
-    }
+function buildExportPreview() {
+  const events = buildEvents();
+
+  document.getElementById('exportStats').innerHTML = `
+    <div class="stat-chip">共 <span class="val">${events.length}</span> 個班次</div>
+    <div class="stat-chip">${S.year} 年 <span class="val">${S.month}</span> 月</div>
+    <div class="stat-chip">員工 <span class="val">${S.empName}</span></div>
+  `;
+
+  const show = events.slice(0, 10);
+  document.getElementById('eventPreview').innerHTML = show.map(ev => `
+    <div class="event-item">
+      <div class="event-date">${S.month}/${ev.date} (${DAY_NAMES[ev.jsDate.getDay()]})</div>
+      <div class="event-code" style="background:${codeColor(ev.code)}22;color:${codeColor(ev.code)}">${ev.code}</div>
+      <div class="event-label">${ev.label}</div>
+      <div class="event-time">${ev.startDisplay} — ${ev.endDisplay}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('moreEventsNote').textContent =
+    events.length > 10 ? `… 還有 ${events.length - 10} 個班次` : '';
+
+  resetSyncUI();
+}
+
+// ═══════════════════════════════════════════════
+//  GOOGLE CALENDAR SYNC
+// ═══════════════════════════════════════════════
+
+function resetSyncUI() {
+  document.getElementById('syncIdle').classList.remove('hidden');
+  document.getElementById('syncProgress').classList.add('hidden');
+  document.getElementById('syncDone').classList.add('hidden');
+  document.getElementById('syncLog').innerHTML = '';
+  document.getElementById('syncFill').style.width = '0%';
+}
+
+function logLine(id, mark, text, cls) {
+  const log = document.getElementById('syncLog');
+  let el = document.getElementById('sl-' + id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sl-' + id;
+    log.appendChild(el);
+  }
+  el.className = 'sync-log-line ' + (cls || '');
+  el.innerHTML = `<span class="s-mark">${mark}</span><span class="s-text">${text}</span>`;
+}
+
+function getToken() {
+  if (gToken && Date.now() < gToken.expiry - 60000) return Promise.resolve(gToken.token);
+  return new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: OAUTH_CLIENT_ID,
+      scope: OAUTH_SCOPE,
+      callback: resp => {
+        if (resp.error) { reject(new Error('授權失敗：' + resp.error)); return; }
+        gToken = { token: resp.access_token, expiry: Date.now() + resp.expires_in * 1000 };
+        resolve(gToken.token);
+      },
+    });
+    client.requestAccessToken();
   });
-
-  state.events.sort((a, b) => a.date.localeCompare(b.date));
-  state.step = 6;
-  render();
 }
 
-// ─── Step 6: Export ────────────────────────────────────────────────────────────
-function renderStep6() {
-  const workCnt  = state.events.filter(e => !e.allDay).length;
-  const leaveCnt = state.events.filter(e => e.allDay).length;
+async function clearMonthEvents(token) {
+  const timeMin = new Date(S.year, S.month - 1, 1).toISOString();
+  const timeMax = new Date(S.year, S.month, 1).toISOString();
+  const ids = [];
+  let pageToken = '';
 
-  return `
-  <div class="space-y-5">
-    <div>
-      <h2 class="text-xl font-bold text-slate-800">匯出行事曆</h2>
-      <p class="text-slate-500 text-sm mt-1">
-        共 <b>${workCnt}</b> 個工作日行程、<b>${leaveCnt}</b> 個全天假別，可下載 .ics 匯入行事曆
-      </p>
-    </div>
+  do {
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`);
+    url.searchParams.set('timeMin', timeMin);
+    url.searchParams.set('timeMax', timeMax);
+    url.searchParams.set('maxResults', '250');
+    url.searchParams.set('singleEvents', 'true');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
 
-    <!-- Preview -->
-    <div class="border rounded-xl overflow-hidden shadow-sm">
-      <div class="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
-        <span class="font-semibold text-slate-700 text-sm">行程預覽</span>
-        <span class="text-xs text-slate-400">${state.events.length} 筆</span>
-      </div>
-      <div class="divide-y max-h-72 overflow-y-auto">
-        ${state.events.length === 0
-          ? '<div class="text-center py-10 text-slate-400 text-sm">沒有可匯出的行程（所有班別均為休假或已忽略）</div>'
-          : state.events.map(e => `
-            <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50">
-              <div class="text-sm font-medium text-slate-500 w-20 shrink-0">${e.date.slice(5).replace('-','/')}</div>
-              <div class="flex-1 min-w-0">
-                <div class="font-medium text-slate-800 text-sm truncate">${escHtml(e.title)}</div>
-                ${e.allDay
-                  ? '<div class="text-xs text-amber-600">全天（請假）</div>'
-                  : `<div class="text-xs text-slate-400">${e.start} – ${e.end}</div>`}
-              </div>
-              <span class="px-2 py-0.5 bg-slate-100 rounded text-xs text-slate-500 shrink-0">${escHtml(e.code)}</span>
-            </div>`
-          ).join('')}
-      </div>
-    </div>
-
-    <!-- Actions -->
-    <div class="grid sm:grid-cols-2 gap-4">
-      <div class="border-2 border-blue-200 bg-blue-50 rounded-xl p-5">
-        <div class="text-3xl mb-2">📥</div>
-        <h3 class="font-bold text-blue-800 mb-1">下載 .ics 檔案</h3>
-        <p class="text-xs text-blue-600 mb-4">Apple 行事曆、Google 日曆、Outlook 皆支援</p>
-        <button onclick="downloadICS()"
-          class="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all text-sm">
-          下載 ${escHtml(state.selectedName || '')}_${state.month}.ics
-        </button>
-      </div>
-
-      <div class="border-2 border-slate-200 bg-white rounded-xl p-5">
-        <div class="text-3xl mb-2">📋</div>
-        <h3 class="font-bold text-slate-800 mb-1">匯入說明</h3>
-        <ul class="text-xs text-slate-600 space-y-1.5 mt-2">
-          <li><b>Apple 行事曆：</b>直接開啟 .ics 即可匯入</li>
-          <li><b>Google 日曆：</b>設定 → 匯入 → 選擇檔案</li>
-          <li><b>iPhone：</b>AirDrop 或 iCloud 雲碟開啟</li>
-          <li><b>Outlook：</b>開啟 .ics 檔後點選「新增至行事曆」</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="flex justify-between pt-2">
-      <button onclick="goTo(5)" class="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-50 text-sm">← 調整設定</button>
-      <button onclick="resetAll()" class="px-4 py-2 border border-green-200 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 text-sm">
-        📤 處理新班表
-      </button>
-    </div>
-  </div>`;
-}
-
-function downloadICS() {
-  const ics = buildICS();
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `班表_${state.selectedName}_${state.month}.ics`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('已下載！請開啟檔案匯入行事曆', 'success');
-}
-
-function buildICS() {
-  const stamp = new Date().toISOString().replace(/[-:.]/g,'').slice(0, 15) + 'Z';
-  let out = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//班表同步工具//TW',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    `X-WR-CALNAME:${state.selectedName} ${state.month} 班表`,
-    'X-WR-TIMEZONE:Asia/Taipei',
-    'BEGIN:VTIMEZONE',
-    'TZID:Asia/Taipei',
-    'BEGIN:STANDARD',
-    'DTSTART:19700101T000000',
-    'TZOFFSETFROM:+0800',
-    'TZOFFSETTO:+0800',
-    'TZNAME:CST',
-    'END:STANDARD',
-    'END:VTIMEZONE',
-  ];
-
-  state.events.forEach((e, i) => {
-    out.push('BEGIN:VEVENT');
-    if (e.allDay) {
-      const d0 = e.date.replace(/-/g, '');
-      const d1 = nextDay(e.date).replace(/-/g, '');
-      out.push(`DTSTART;VALUE=DATE:${d0}`);
-      out.push(`DTEND;VALUE=DATE:${d1}`);
-    } else {
-      const ds = `${e.date.replace(/-/g,'')}T${e.start.replace(':','')}00`;
-      const de = `${e.date.replace(/-/g,'')}T${e.end.replace(':','')}00`;
-      out.push(`DTSTART;TZID=Asia/Taipei:${ds}`);
-      out.push(`DTEND;TZID=Asia/Taipei:${de}`);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error?.message || `列出行程失敗 (${res.status})`);
     }
-    out.push(`SUMMARY:${icsEsc(e.title)}`);
-    out.push(`DESCRIPTION:班別代碼：${icsEsc(e.code)}`);
-    out.push(`UID:sched-${e.date}-${i}-${state.selectedName}@shift-sync`);
-    out.push(`DTSTAMP:${stamp}`);
-    out.push('END:VEVENT');
-  });
+    const data = await res.json();
+    (data.items || []).forEach(e => ids.push(e.id));
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
 
-  out.push('END:VCALENDAR');
-  return out.join('\r\n');
+  for (const id of ids) {
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${id}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok && res.status !== 410) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error?.message || `刪除行程失敗 (${res.status})`);
+    }
+  }
+  return ids.length;
 }
 
-function nextDay(dateStr) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+function isoFromIcal(s) {
+  // '20250501T093000' → '2025-05-01T09:30:00'
+  return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:00`;
 }
 
-function icsEsc(s) { return String(s).replace(/[,;\\]/g, '\\$&').replace(/\n/g, '\\n'); }
-
-// ─── Utils ─────────────────────────────────────────────────────────────────────
-function goTo(step) { state.step = step; render(); }
-
-function resetAll() {
-  state.step = 1;
-  state.imageFile = null;
-  state.imageDataUrl = null;
-  state.imageBase64 = null;
-  state.rawData = null;
-  state.selectedName = null;
-  state.myShifts = {};
-  state.month = '';
-  state.uniqueCodes = [];
-  state.events = [];
-  render();
+async function createGoogleEvent(token, ev) {
+  const body = {
+    summary: ev.label,
+    description: `班別代碼：${ev.code}`,
+    start: { dateTime: isoFromIcal(ev.startStr), timeZone: 'Asia/Taipei' },
+    end:   { dateTime: isoFromIcal(ev.endStr),   timeZone: 'Asia/Taipei' },
+  };
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`,
+    {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || `建立行程失敗 (${res.status})`);
+  }
 }
 
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function syncToGoogle() {
+  const events = buildEvents();
+  if (!events.length) { toast('沒有可同步的班次', 'error'); return; }
+
+  document.getElementById('syncIdle').classList.add('hidden');
+  document.getElementById('syncProgress').classList.remove('hidden');
+
+  try {
+    // Step 1: Auth
+    logLine('auth', '…', '正在取得 Google 授權…', 's-spin');
+    const token = await getToken();
+    logLine('auth', '✓', '授權成功', 's-done');
+
+    // Step 2: Clear
+    logLine('clear', '…', `清除 ${S.year}/${pad(S.month)} 舊行程…`, 's-spin');
+    const cleared = await clearMonthEvents(token);
+    logLine('clear', '✓', `已清除 ${cleared} 筆舊行程`, 's-done');
+
+    // Step 3: Create
+    logLine('create', '…', `寫入 0 / ${events.length} 個班次…`, 's-spin');
+    for (let i = 0; i < events.length; i++) {
+      await createGoogleEvent(token, events[i]);
+      document.getElementById('syncFill').style.width = `${Math.round((i + 1) / events.length * 100)}%`;
+      logLine('create', '…', `寫入 ${i + 1} / ${events.length} 個班次…`, 's-spin');
+    }
+    logLine('create', '✓', `已寫入 ${events.length} 個班次`, 's-done');
+
+    // Done
+    document.getElementById('syncFill').style.width = '100%';
+    await new Promise(r => setTimeout(r, 400));
+    document.getElementById('syncProgress').classList.add('hidden');
+    document.getElementById('syncDone').classList.remove('hidden');
+    document.getElementById('syncDoneMsg').textContent =
+      `${S.year}年${S.month}月 · ${events.length} 個班次已同步到 Google 日曆`;
+    toast(`✓ 同步完成，共 ${events.length} 個班次`, 'success');
+
+  } catch (err) {
+    logLine('err', '✗', err.message, 's-err');
+    setTimeout(resetSyncUI, 3000);
+    console.error(err);
+  }
 }
 
-function escAttr(s) { return escHtml(s).replace(/'/g, '&#39;'); }
+// ═══════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmtDt(y, mo, d, h, m) { return `${y}${pad(mo)}${pad(d)}T${pad(h)}${pad(m)}00`; }
 
-function toast(msg, type = 'info') {
-  const colors = { success: 'bg-emerald-500', error: 'bg-red-500', info: 'bg-blue-500' };
-  const el = document.createElement('div');
-  el.className = `px-5 py-3 rounded-xl text-white font-medium shadow-lg text-sm ${colors[type] || colors.info} transition-opacity duration-300`;
+function codeColor(code) {
+  const map = {
+    'M8':'#f0a500','MA8':'#f5b830','M':'#f0a500','MC':'#ff8c42','MK':'#ffaa00','MA':'#ffc947',
+    'H':'#22d3a0','H8':'#1fc99a','HK':'#2de0ac',
+    'E':'#7c5cfc','EC':'#8b6cff','EF':'#9a7aff','E8':'#6b4feb',
+    'P':'#4da6ff','PF':'#60b0ff','PC':'#3d9ef0','PK':'#5ab8ff',
+    'RO':'#3a4a5a','CL':'#5a3a4a','AL':'#4a5a3a','SL':'#5a4a3a',
+  };
+  if (map[code]) return map[code];
+  let hash = 0;
+  for (let i = 0; i < code.length; i++) hash = code.charCodeAt(i) + ((hash << 5) - hash);
+  return `hsl(${((hash % 360) + 360) % 360}, 65%, 58%)`;
+}
+
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
   el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3000);
+  el.className = 'toast show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 3000);
 }
-
-// ─── Boot ──────────────────────────────────────────────────────────────────────
-render();
 </script>
 </body>
 </html>
