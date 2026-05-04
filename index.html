@@ -315,7 +315,7 @@ button, .cal-cell, .name-chip { touch-action: manipulation; }
     <div class="step-connector"></div>
     <div class="step-dot" id="nav3"><div class="num">3</div><span class="step-label">匯出行事曆</span></div>
   </div>
-  <div class="ver-badge">v1.2.0</div>
+  <div class="ver-badge">v1.3.0</div>
 </header>
 
 <main>
@@ -457,12 +457,21 @@ button, .cal-cell, .name-chip { touch-action: manipulation; }
   <div class="card" id="syncCard">
     <!-- Idle -->
     <div id="syncIdle" style="text-align:center">
-      <button class="btn btn-green" onclick="syncToGoogle()" style="width:100%;max-width:420px">
+      <button class="btn btn-green" id="syncBtn" onclick="syncToGoogle()" style="width:100%;max-width:420px">
         ↑ 同步到 Google 日曆
       </button>
       <p style="font-size:11px;color:var(--text-muted);margin-top:10px;font-family:var(--mono)">
-        同步前自動清除該月舊行程 · 寫入指定行事曆
+        同步前自動清除該月舊行程 · 可選擇要寫入的行事曆
       </p>
+    </div>
+    <!-- Picker -->
+    <div id="syncPicker" class="hidden" style="text-align:center">
+      <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">選擇要寫入的 Google 日曆</p>
+      <select id="calendarSelect" style="width:100%;max-width:420px;padding:10px 14px;background:var(--card2);border:1px solid var(--border-hi);border-radius:8px;color:var(--text);font-size:14px;font-family:var(--sans);outline:none;cursor:pointer;appearance:none"></select>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+        <button class="btn btn-ghost" onclick="resetSyncUI()" style="font-size:13px;padding:8px 20px">取消</button>
+        <button class="btn btn-green" onclick="confirmCalendarAndSync()" style="font-size:13px;padding:8px 24px">確認同步 →</button>
+      </div>
     </div>
     <!-- Progress -->
     <div id="syncProgress" class="hidden">
@@ -493,10 +502,11 @@ button, .cal-cell, .name-chip { touch-action: manipulation; }
 //  CONFIG
 // ═══════════════════════════════════════════════
 const GEMINI_MODEL = 'gemini-3.1-pro-preview';
-const CALENDAR_ID = '1461720c368bce8a511b5531e89d08899056a19676f42603792faf426838b716@group.calendar.google.com';
 const OAUTH_CLIENT_ID = '263248100982-c6pb7r9o6n0tdl3ek0vurliuqfr8jhc4.apps.googleusercontent.com';
-const OAUTH_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+const OAUTH_SCOPE = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly';
 let gToken = null; // { token, expiry }
+let selectedCalendarId = localStorage.getItem('sched_calendar_id') || null;
+let pendingSyncData = null; // { token, events }
 
 const SHIFT_PRESETS = {
   'M8':  { label: 'M8',     start: '09:30', end: '18:30', skip: false },
@@ -924,11 +934,15 @@ function buildExportPreview() {
 // ═══════════════════════════════════════════════
 
 function resetSyncUI() {
+  const btn = document.getElementById('syncBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '↑ 同步到 Google 日曆'; }
   document.getElementById('syncIdle').classList.remove('hidden');
+  document.getElementById('syncPicker').classList.add('hidden');
   document.getElementById('syncProgress').classList.add('hidden');
   document.getElementById('syncDone').classList.add('hidden');
   document.getElementById('syncLog').innerHTML = '';
   document.getElementById('syncFill').style.width = '0%';
+  pendingSyncData = null;
 }
 
 function logLine(id, mark, text, cls) {
@@ -966,7 +980,7 @@ async function clearMonthEvents(token) {
   let pageToken = '';
 
   do {
-    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`);
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(selectedCalendarId)}/events`);
     url.searchParams.set('timeMin', timeMin);
     url.searchParams.set('timeMax', timeMax);
     url.searchParams.set('maxResults', '250');
@@ -985,7 +999,7 @@ async function clearMonthEvents(token) {
 
   for (const id of ids) {
     const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${id}`,
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(selectedCalendarId)}/events/${id}`,
       { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
     );
     if (!res.ok && res.status !== 410) {
@@ -1009,7 +1023,7 @@ async function createGoogleEvent(token, ev) {
     end:   { dateTime: isoFromIcal(ev.endStr),   timeZone: 'Asia/Taipei' },
   };
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(selectedCalendarId)}/events`,
     {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1026,21 +1040,69 @@ async function syncToGoogle() {
   const events = buildEvents();
   if (!events.length) { toast('沒有可同步的班次', 'error'); return; }
 
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  btn.textContent = '授權中…';
+
+  try {
+    const token = await getToken();
+    btn.textContent = '載入行事曆…';
+    const calendars = await fetchCalendarList(token);
+    pendingSyncData = { token, events };
+    showCalendarPicker(calendars);
+  } catch (err) {
+    toast(err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '↑ 同步到 Google 日曆';
+  }
+}
+
+async function fetchCalendarList(token) {
+  const res = await fetch(
+    'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50',
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || '無法載入行事曆清單');
+  }
+  const data = await res.json();
+  return (data.items || []).filter(c => c.accessRole === 'owner' || c.accessRole === 'writer');
+}
+
+function showCalendarPicker(calendars) {
+  const select = document.getElementById('calendarSelect');
+  select.innerHTML = '';
+  calendars.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.summary + (c.primary ? ' （主要）' : '');
+    if (c.id === selectedCalendarId) opt.selected = true;
+    else if (!selectedCalendarId && c.primary) opt.selected = true;
+    select.appendChild(opt);
+  });
   document.getElementById('syncIdle').classList.add('hidden');
+  document.getElementById('syncPicker').classList.remove('hidden');
+}
+
+async function confirmCalendarAndSync() {
+  if (!pendingSyncData) return;
+  const { token, events } = pendingSyncData;
+  pendingSyncData = null;
+
+  const select = document.getElementById('calendarSelect');
+  selectedCalendarId = select.value;
+  localStorage.setItem('sched_calendar_id', selectedCalendarId);
+  const calName = select.options[select.selectedIndex]?.text || selectedCalendarId;
+
+  document.getElementById('syncPicker').classList.add('hidden');
   document.getElementById('syncProgress').classList.remove('hidden');
 
   try {
-    // Step 1: Auth
-    logLine('auth', '…', '正在取得 Google 授權…', 's-spin');
-    const token = await getToken();
-    logLine('auth', '✓', '授權成功', 's-done');
-
-    // Step 2: Clear
     logLine('clear', '…', `清除 ${S.year}/${pad(S.month)} 舊行程…`, 's-spin');
     const cleared = await clearMonthEvents(token);
     logLine('clear', '✓', `已清除 ${cleared} 筆舊行程`, 's-done');
 
-    // Step 3: Create
     logLine('create', '…', `寫入 0 / ${events.length} 個班次…`, 's-spin');
     for (let i = 0; i < events.length; i++) {
       await createGoogleEvent(token, events[i]);
@@ -1049,13 +1111,12 @@ async function syncToGoogle() {
     }
     logLine('create', '✓', `已寫入 ${events.length} 個班次`, 's-done');
 
-    // Done
     document.getElementById('syncFill').style.width = '100%';
     await new Promise(r => setTimeout(r, 400));
     document.getElementById('syncProgress').classList.add('hidden');
     document.getElementById('syncDone').classList.remove('hidden');
     document.getElementById('syncDoneMsg').textContent =
-      `${S.year}年${S.month}月 · ${events.length} 個班次已同步到 Google 日曆`;
+      `${S.year}年${S.month}月 · ${events.length} 個班次已同步到「${calName}」`;
     toast(`✓ 同步完成，共 ${events.length} 個班次`, 'success');
 
   } catch (err) {
